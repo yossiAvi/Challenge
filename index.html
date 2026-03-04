@@ -1,0 +1,1664 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>שאגת הארי</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas" width="800" height="600"></canvas>
+<script>
+// =============================================================================
+// 1. CONSTANTS & CONFIGURATION
+// =============================================================================
+const CANVAS_W = 800, CANVAS_H = 600;
+const TILE = 20;
+const COLS = 21, ROWS = 27;
+const MAZE_PX_W = COLS * TILE; // 420
+const MAZE_PX_H = ROWS * TILE; // 540
+const OFFSET_X = 190;
+const OFFSET_Y = 30;
+const PLAYER_SPEED = 2.5; // pixels per frame at 60fps
+const GHOST_MOVE_INTERVAL = 12; // frames between ghost tile steps
+const POWER_MODE_DURATION = 8000;
+const HUNGRY_INTERVAL_MIN = 20000;
+const HUNGRY_INTERVAL_MAX = 40000;
+const BONUS_PULSE_SPEED = 0.05;
+const BOMB_PULSE_SPEED = 0.08;
+
+// Game states
+const STATE_START = 'start';
+const STATE_PLAYING = 'playing';
+const STATE_PAUSED = 'paused';
+const STATE_GAMEOVER = 'gameover';
+const STATE_WIN = 'win';
+const STATE_HUNGRY = 'hungry';
+const STATE_DYING = 'dying';
+
+// =============================================================================
+// 2. MAZE DATA & FUNCTIONS
+// =============================================================================
+const MAZE_INIT = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 0
+  [1,3,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,3,1], // 1
+  [1,0,1,1,0,1,1,1,0,0,1,0,0,1,1,1,0,1,1,0,1], // 2
+  [1,0,1,1,0,1,1,1,0,0,1,0,0,1,1,1,0,1,1,0,1], // 3
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1], // 4
+  [1,0,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,0,1], // 5
+  [1,0,1,1,0,1,0,0,0,0,0,0,0,0,0,1,0,1,1,0,1], // 6
+  [1,0,0,0,0,1,0,1,1,2,2,2,1,1,0,1,0,0,0,0,1], // 7
+  [1,1,1,1,0,1,0,1,4,4,4,4,4,1,0,1,0,1,1,1,1], // 8
+  [0,0,0,0,0,1,0,1,4,4,4,4,4,1,0,1,0,0,0,0,0], // 9
+  [1,1,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,1,1], // 10
+  [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1], // 11
+  [1,0,1,1,1,1,0,1,1,0,0,0,1,1,0,1,1,1,1,0,1], // 12
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1], // 13
+  [1,0,1,1,1,1,0,1,1,0,0,0,1,1,0,1,1,1,1,0,1], // 14
+  [1,0,0,0,0,1,0,0,0,0,0,0,0,0,0,1,0,0,0,0,1], // 15
+  [1,0,1,1,0,1,0,1,1,1,1,1,1,1,0,1,0,1,1,0,1], // 16
+  [1,0,1,1,0,1,0,0,0,0,1,0,0,0,0,1,0,1,1,0,1], // 17
+  [1,0,0,0,0,0,0,1,0,0,1,0,0,1,0,0,0,0,0,0,1], // 18
+  [1,1,1,1,0,1,0,1,0,1,1,1,0,1,0,1,0,1,1,1,1], // 19
+  [1,0,0,0,0,0,0,1,0,0,0,0,0,1,0,0,0,0,0,0,1], // 20
+  [1,0,1,1,1,1,1,1,0,1,1,1,0,1,1,1,1,1,1,0,1], // 21
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1], // 22
+  [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1], // 23
+  [1,0,1,1,0,1,1,1,0,1,1,1,0,1,1,1,0,1,1,0,1], // 24
+  [1,3,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,3,1], // 25
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1], // 26
+];
+
+let maze = [];
+let totalDots = 0;
+let dotsEaten = 0;
+
+function initMaze() {
+  maze = [];
+  totalDots = 0;
+  dotsEaten = 0;
+  for (let r = 0; r < ROWS; r++) {
+    maze[r] = [];
+    for (let c = 0; c < COLS; c++) {
+      maze[r][c] = MAZE_INIT[r][c];
+      if (maze[r][c] === 0 || maze[r][c] === 3) totalDots++;
+    }
+  }
+}
+
+function isWall(r, c) {
+  if (r < 0 || r >= ROWS) return true;
+  // Tunnel row wrapping
+  if (r === 9 && (c < 0 || c >= COLS)) return false;
+  if (c < 0 || c >= COLS) return true;
+  const v = maze[r][c];
+  return v === 1;
+}
+
+function isPassable(r, c, forGhost, ghostInPen) {
+  if (r < 0 || r >= ROWS) return false;
+  if (r === 9 && (c < 0 || c >= COLS)) return true; // tunnel
+  if (c < 0 || c >= COLS) return false;
+  const v = maze[r][c];
+  if (v === 1) return false;
+  if (forGhost) {
+    if (ghostInPen) {
+      // Pen-exiting ghosts can go through pen(4) and gate(2) tiles
+      return true;
+    }
+    // Normal ghost outside pen: can't re-enter pen or gate
+    if (v === 4) return false;
+    if (v === 2) return false;
+    return true;
+  }
+  // Player can't go into pen or gate
+  if (v === 4) return false;
+  if (v === 2) return false; // ghost gate area - player can't enter
+  return true;
+}
+
+// BFS pathfinding
+function bfsPath(startR, startC, goalR, goalC, forGhost, ghostInPen) {
+  const visited = new Set();
+  const queue = [[startR, startC, []]];
+  const key = (r, c) => r * 100 + c;
+  visited.add(key(startR, startC));
+  const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+  while (queue.length > 0) {
+    const [r, c, path] = queue.shift();
+    if (r === goalR && c === goalC) return path;
+    for (const [dr, dc] of dirs) {
+      let nr = r + dr;
+      let nc = c + dc;
+      // tunnel wrapping for row 9
+      if (r === 9 && nc < 0) nc = COLS - 1;
+      if (r === 9 && nc >= COLS) nc = 0;
+      if (!visited.has(key(nr, nc)) && isPassable(nr, nc, forGhost, ghostInPen)) {
+        visited.add(key(nr, nc));
+        queue.push([nr, nc, [...path, [nr, nc]]]);
+      }
+    }
+  }
+  return [];
+}
+
+function getTileCenter(r, c) {
+  return {
+    x: OFFSET_X + c * TILE + TILE / 2,
+    y: OFFSET_Y + r * TILE + TILE / 2
+  };
+}
+
+function pixelToTile(px, py) {
+  return {
+    col: Math.floor((px - OFFSET_X) / TILE),
+    row: Math.floor((py - OFFSET_Y) / TILE)
+  };
+}
+
+// =============================================================================
+// 3. CANVAS & IMAGE SETUP
+// =============================================================================
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+ctx.imageSmoothingEnabled = true;
+
+const images = {};
+const imageNames = ['shaked', 'naim', 'kaminai', 'bibi', 'trump', 'shiran'];
+let imagesLoaded = 0;
+
+function loadImages(callback) {
+  imageNames.forEach(name => {
+    const img = new Image();
+    img.onload = () => {
+      imagesLoaded++;
+      if (imagesLoaded === imageNames.length) callback();
+    };
+    img.onerror = () => {
+      imagesLoaded++;
+      if (imagesLoaded === imageNames.length) callback();
+    };
+    img.src = name + '.png';
+    images[name] = img;
+  });
+}
+
+// =============================================================================
+// 4. AUDIO SYSTEM (Web Audio API)
+// =============================================================================
+let audioCtx = null;
+let musicScheduled = false;
+let musicStartTime = 0;
+let musicLoopId = null;
+let musicGain = null;
+let percGain = null;
+
+const MELODY = [
+  [523,0.25],[523,0.25],[523,0.25],[415,0.75],[622,0.25],
+  [523,0.25],[415,0.25],[622,0.75],[784,1.0],[698,0.25],
+  [659,0.25],[622,0.25],[587,0.75],[523,0.25],[415,0.25],
+  [349,0.25],[440,0.75],[523,1.5]
+];
+
+function getAudioCtx() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    musicGain = audioCtx.createGain();
+    musicGain.gain.value = 0.12;
+    musicGain.connect(audioCtx.destination);
+    percGain = audioCtx.createGain();
+    percGain.gain.value = 0.08;
+    percGain.connect(audioCtx.destination);
+  }
+  return audioCtx;
+}
+
+function scheduleNote(freq, startT, dur, gainNode) {
+  const ac = getAudioCtx();
+  if (freq === 0) return;
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = 'triangle';
+  osc.frequency.value = freq;
+  g.gain.setValueAtTime(0.001, startT);
+  g.gain.linearRampToValueAtTime(1.0, startT + 0.02);
+  g.gain.linearRampToValueAtTime(0.7, startT + dur * 0.5);
+  g.gain.linearRampToValueAtTime(0.001, startT + dur - 0.01);
+  osc.connect(g);
+  g.connect(gainNode);
+  osc.start(startT);
+  osc.stop(startT + dur);
+}
+
+function scheduleKick(startT) {
+  const ac = getAudioCtx();
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(60, startT);
+  osc.frequency.exponentialRampToValueAtTime(20, startT + 0.3);
+  g.gain.setValueAtTime(0.8, startT);
+  g.gain.exponentialRampToValueAtTime(0.001, startT + 0.3);
+  osc.connect(g);
+  g.connect(percGain);
+  osc.start(startT);
+  osc.stop(startT + 0.35);
+}
+
+function scheduleMelodyLoop(startT) {
+  const ac = getAudioCtx();
+  let t = startT;
+  let beatDur = 0.5; // quarter note duration
+  let totalDur = 0;
+  for (const [freq, dur] of MELODY) {
+    scheduleNote(freq, t, dur * beatDur, musicGain);
+    t += dur * beatDur;
+    totalDur += dur * beatDur;
+  }
+  // Kick on every beat
+  let kt = startT;
+  while (kt < startT + totalDur) {
+    scheduleKick(kt);
+    kt += beatDur;
+  }
+  return totalDur;
+}
+
+let musicPlaying = false;
+let musicLoopTimeout = null;
+
+function startMusic() {
+  if (musicPlaying) return;
+  musicPlaying = true;
+  const ac = getAudioCtx();
+  if (ac.state === 'suspended') ac.resume();
+
+  function loop() {
+    if (!musicPlaying) return;
+    const ac = getAudioCtx();
+    const dur = scheduleMelodyLoop(ac.currentTime + 0.05);
+    musicLoopTimeout = setTimeout(loop, dur * 1000);
+  }
+  loop();
+}
+
+function stopMusic() {
+  musicPlaying = false;
+  if (musicLoopTimeout) { clearTimeout(musicLoopTimeout); musicLoopTimeout = null; }
+}
+
+function playEndingTune(win) {
+  stopMusic();
+  const ac = getAudioCtx();
+  if (ac.state === 'suspended') ac.resume();
+  const gainNode = ac.createGain();
+  gainNode.gain.value = 0.2;
+  gainNode.connect(ac.destination);
+  const now = ac.currentTime;
+  if (win) {
+    const notes = [[523,0.2],[659,0.2],[784,0.2],[1047,0.4],[784,0.2],[1047,0.6]];
+    let t = now;
+    for (const [f, d] of notes) { scheduleNote(f, t, d, gainNode); t += d; }
+  } else {
+    const notes = [[392,0.3],[370,0.3],[349,0.3],[330,0.6]];
+    let t = now;
+    for (const [f, d] of notes) { scheduleNote(f, t, d, gainNode); t += d; }
+  }
+}
+
+function playDotEatSound() {
+  const ac = getAudioCtx();
+  if (!ac) return;
+  const now = ac.currentTime;
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = 'square';
+  osc.frequency.value = 440 + Math.random() * 200;
+  g.gain.setValueAtTime(0.04, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+  osc.connect(g); g.connect(ac.destination);
+  osc.start(now); osc.stop(now + 0.07);
+}
+
+function playPowerPelletSound() {
+  const ac = getAudioCtx();
+  const now = ac.currentTime;
+  const osc = ac.createOscillator();
+  const g = ac.createGain();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(300, now);
+  osc.frequency.linearRampToValueAtTime(800, now + 0.3);
+  g.gain.setValueAtTime(0.15, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.4);
+  osc.connect(g); g.connect(ac.destination);
+  osc.start(now); osc.stop(now + 0.4);
+}
+
+function playLaughSound() {
+  const ac = getAudioCtx();
+  const freqs = [800, 1000, 700, 900];
+  freqs.forEach((freq, i) => {
+    const t = ac.currentTime + i * 0.12;
+    const osc = ac.createOscillator();
+    const g = ac.createGain();
+    osc.type = 'sine';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.1);
+    osc.connect(g); g.connect(ac.destination);
+    osc.start(t); osc.stop(t + 0.12);
+  });
+}
+
+function playExplosionSound() {
+  const ac = getAudioCtx();
+  const now = ac.currentTime;
+  const bufLen = ac.sampleRate * 0.5;
+  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const lp = ac.createBiquadFilter();
+  lp.type = 'lowpass';
+  lp.frequency.setValueAtTime(1000, now);
+  lp.frequency.exponentialRampToValueAtTime(100, now + 0.5);
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.4, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.5);
+  src.connect(lp); lp.connect(g); g.connect(ac.destination);
+  src.start(now); src.stop(now + 0.5);
+}
+
+function playDeathSound() {
+  const ac = getAudioCtx();
+  const now = ac.currentTime;
+  const notes = [[494,0.12],[466,0.12],[440,0.12],[415,0.12],[392,0.2],[370,0.3]];
+  let t = now;
+  const g = ac.createGain();
+  g.gain.value = 0.2;
+  g.connect(ac.destination);
+  for (const [f, d] of notes) { scheduleNote(f, t, d, g); t += d; }
+}
+
+// =============================================================================
+// 5. SPEECH SYSTEM (Web Speech API)
+// =============================================================================
+function speak(text, pitch, rate) {
+  if (!window.speechSynthesis) return;
+  window.speechSynthesis.cancel();
+  const utt = new SpeechSynthesisUtterance(text);
+  utt.lang = 'he-IL';
+  utt.pitch = pitch || 1.0;
+  utt.rate = rate || 1.0;
+  window.speechSynthesis.speak(utt);
+}
+
+// =============================================================================
+// 6. PARTICLE SYSTEM
+// =============================================================================
+let particles = [];
+
+function addParticles(x, y, count, colors, speedMin, speedMax, lifeDecay) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = speedMin + Math.random() * (speedMax - speedMin);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * speed,
+      vy: Math.sin(angle) * speed,
+      life: 1.0,
+      decay: lifeDecay || 0.02,
+      radius: 3 + Math.random() * 3,
+      color: colors[Math.floor(Math.random() * colors.length)]
+    });
+  }
+}
+
+let popups = []; // score popups and text popups
+
+function addPopup(x, y, text, color, fontSize) {
+  popups.push({
+    x, y,
+    vy: -1.2,
+    text,
+    color: color || '#FFD700',
+    fontSize: fontSize || 18,
+    life: 1.0,
+    decay: 0.015
+  });
+}
+
+function updateParticles() {
+  particles = particles.filter(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += 0.05; // gravity
+    p.life -= p.decay;
+    return p.life > 0;
+  });
+  popups = popups.filter(p => {
+    p.y += p.vy;
+    p.life -= p.decay;
+    return p.life > 0;
+  });
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+  for (const p of popups) {
+    ctx.save();
+    ctx.globalAlpha = p.life;
+    ctx.font = `bold ${p.fontSize}px Arial`;
+    ctx.fillStyle = p.color;
+    ctx.textAlign = 'center';
+    ctx.fillText(p.text, p.x, p.y);
+    ctx.restore();
+  }
+}
+
+// =============================================================================
+// 7. BACKGROUND & JETS
+// =============================================================================
+let jets = [];
+
+function initJets() {
+  jets = [];
+  for (let i = 0; i < 4; i++) {
+    jets.push({
+      x: -100 + Math.random() * 900,
+      y: 50 + Math.random() * 150,
+      speed: 0.3 + Math.random() * 0.4,
+      scale: 0.6 + Math.random() * 0.5
+    });
+  }
+}
+
+function updateJets() {
+  for (const jet of jets) {
+    jet.x += jet.speed;
+    if (jet.x > 900) {
+      jet.x = -120;
+      jet.y = 50 + Math.random() * 150;
+    }
+  }
+}
+
+function drawJet(x, y, scale) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.scale(scale, scale);
+  ctx.globalAlpha = 0.25;
+  ctx.fillStyle = '#8a9bb5';
+  ctx.strokeStyle = '#8a9bb5';
+  // Body
+  ctx.beginPath();
+  ctx.ellipse(0, 0, 35, 7, 0, 0, Math.PI * 2);
+  ctx.fill();
+  // Nose cone
+  ctx.beginPath();
+  ctx.moveTo(35, 0);
+  ctx.lineTo(55, 0);
+  ctx.lineTo(35, 4);
+  ctx.closePath();
+  ctx.fill();
+  // Wings
+  ctx.beginPath();
+  ctx.moveTo(5, 0);
+  ctx.lineTo(-15, -22);
+  ctx.lineTo(-25, -22);
+  ctx.lineTo(-20, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(5, 0);
+  ctx.lineTo(-15, 22);
+  ctx.lineTo(-25, 22);
+  ctx.lineTo(-20, 0);
+  ctx.closePath();
+  ctx.fill();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(-25, 0);
+  ctx.lineTo(-40, -12);
+  ctx.lineTo(-35, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(-25, 0);
+  ctx.lineTo(-40, 12);
+  ctx.lineTo(-35, 0);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawBackground() {
+  // Sky gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, CANVAS_H);
+  grad.addColorStop(0, '#0a1628');
+  grad.addColorStop(1, '#1a3a6b');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  // Jets
+  for (const jet of jets) {
+    drawJet(jet.x, jet.y, jet.scale);
+  }
+}
+
+// =============================================================================
+// 8. PLAYER OBJECT & LOGIC
+// =============================================================================
+const player = {
+  row: 13, col: 10,
+  px: 0, py: 0, // pixel pos
+  targetRow: 13, targetCol: 10,
+  dx: 0, dy: 0,
+  nextDx: 0, nextDy: 0,
+  moving: false,
+  moveProgress: 0,
+  lives: 3,
+  score: 0,
+  bobTimer: 0,
+  bobAmt: 0,
+  frozen: false,
+  frozenTimer: 0,
+  danceTimer: 0,
+  dancing: false,
+  danceAngle: 0,
+  danceScale: 1.0
+};
+
+function initPlayer() {
+  player.row = 13; player.col = 10;
+  player.targetRow = 13; player.targetCol = 10;
+  const tc = getTileCenter(13, 10);
+  player.px = tc.x; player.py = tc.y;
+  player.dx = 0; player.dy = 0;
+  player.nextDx = 0; player.nextDy = 0;
+  player.moving = false;
+  player.moveProgress = 0;
+  player.frozen = false;
+  player.frozenTimer = 0;
+  player.dancing = false;
+  player.danceTimer = 0;
+  player.danceAngle = 0;
+  player.danceScale = 1.0;
+  player.bobTimer = 0;
+}
+
+function resetPlayerPosition() {
+  player.row = 13; player.col = 10;
+  player.targetRow = 13; player.targetCol = 10;
+  const tc = getTileCenter(13, 10);
+  player.px = tc.x; player.py = tc.y;
+  player.dx = 0; player.dy = 0;
+  player.nextDx = 0; player.nextDy = 0;
+  player.moving = false;
+  player.moveProgress = 0;
+  player.frozen = false;
+  player.dancing = false;
+}
+
+function updatePlayer(dt) {
+  if (player.frozen) {
+    player.frozenTimer -= dt;
+    if (player.frozenTimer <= 0) {
+      player.frozen = false;
+      player.dancing = false;
+    } else if (player.dancing) {
+      const elapsed = (800 - player.frozenTimer) / 800;
+      player.danceAngle = Math.sin(elapsed * Math.PI * 8) * 15 * (Math.PI / 180);
+      const wave = Math.sin(elapsed * Math.PI * 4);
+      player.danceScale = 1.0 + wave * 0.3;
+    }
+    return;
+  }
+
+  player.bobTimer += dt / 200;
+  player.bobAmt = Math.sin(player.bobTimer) * 2;
+
+  if (player.moving) {
+    const speed = PLAYER_SPEED;
+    const step = speed * (dt / (1000 / 60));
+    player.moveProgress += step / TILE;
+    if (player.moveProgress >= 1.0) {
+      player.moveProgress = 0;
+      player.row = player.targetRow;
+      player.col = player.targetCol;
+      // Tunnel wrapping
+      if (player.row === 9 && player.col < 0) player.col = COLS - 1;
+      if (player.row === 9 && player.col >= COLS) player.col = 0;
+      const tc = getTileCenter(player.row, player.col);
+      player.px = tc.x; player.py = tc.y;
+      player.moving = false;
+      // Try queued direction
+      tryMove(player.nextDx, player.nextDy) || tryMove(player.dx, player.dy);
+    } else {
+      const fromC = getTileCenter(player.row, player.col);
+      let toC;
+      // Handle tunnel wrap
+      let tr = player.targetRow, tc2 = player.targetCol;
+      if (tr === 9 && tc2 < 0) tc2 = COLS - 1;
+      if (tr === 9 && tc2 >= COLS) tc2 = 0;
+      toC = getTileCenter(tr, tc2);
+      // Handle wrapping visual
+      if (Math.abs(toC.x - fromC.x) > TILE * 2) {
+        // Wrapping - just snap
+        player.px = toC.x;
+        player.py = toC.y;
+      } else {
+        player.px = fromC.x + (toC.x - fromC.x) * player.moveProgress;
+        player.py = fromC.y + (toC.y - fromC.y) * player.moveProgress;
+      }
+    }
+  } else {
+    tryMove(player.nextDx, player.nextDy) || tryMove(player.dx, player.dy);
+  }
+}
+
+function tryMove(dx, dy) {
+  if (dx === 0 && dy === 0) return false;
+  const nr = player.row + dy;
+  const nc = player.col + dx;
+  if (isPassable(nr, nc, false)) {
+    player.targetRow = nr;
+    player.targetCol = nc;
+    player.dx = dx;
+    player.dy = dy;
+    player.moving = true;
+    player.moveProgress = 0;
+    return true;
+  }
+  return false;
+}
+
+// =============================================================================
+// 9. ENEMY OBJECT & LOGIC
+// =============================================================================
+let powerMode = false;
+let powerTimer = 0;
+let powerGhostScore = 200;
+
+class Enemy {
+  constructor(name, startRow, startCol, imgKey, type) {
+    this.name = name;
+    this.startRow = startRow;
+    this.startCol = startCol;
+    this.imgKey = imgKey;
+    this.type = type; // 'direct' or 'predictive'
+    this.row = startRow;
+    this.col = startCol;
+    this.px = 0; this.py = 0;
+    this.frameCount = 0;
+    this.inPen = true;
+    this.exitDelay = (type === 'direct') ? 60 : 120;
+    this.exitTimer = 0;
+    this.dead = false; // exploded by bomb
+    this.respawnTimer = 0;
+    this.respawnCountdown = 0;
+    this.exploding = false;
+    this.explodeTimer = 0;
+    this.explodeScale = 1.0;
+    this.fleeing = false;
+    this.fleeFlash = false;
+    this.lastDir = [0, -1];
+    this.penExitPhase = 0; // 0=in pen, 1=moving to exit col, 2=moving up out
+    this.init();
+  }
+
+  init() {
+    const tc = getTileCenter(this.startRow, this.startCol);
+    this.px = tc.x; this.py = tc.y;
+    this.row = this.startRow;
+    this.col = this.startCol;
+    this.inPen = true;
+    this.exitTimer = 0;
+    this.dead = false;
+    this.exploding = false;
+    this.explodeTimer = 0;
+    this.explodeScale = 1.0;
+    this.fleeing = false;
+    this.frameCount = 0;
+    this.penExitPhase = 0;
+  }
+
+  reset() {
+    this.init();
+  }
+
+  getTarget() {
+    if (this.type === 'direct') {
+      return { row: player.row, col: player.col };
+    } else {
+      // Predictive: 4 tiles ahead of player
+      let pr = player.row + player.dy * 4;
+      let pc = player.col + player.dx * 4;
+      pr = Math.max(0, Math.min(ROWS - 1, pr));
+      pc = Math.max(0, Math.min(COLS - 1, pc));
+      // If that's a wall, fall back to direct
+      if (isWall(pr, pc)) return { row: player.row, col: player.col };
+      return { row: pr, col: pc };
+    }
+  }
+
+  update(dt) {
+    if (this.dead) {
+      if (this.respawnTimer > 0) {
+        this.respawnTimer -= dt;
+        this.respawnCountdown = Math.ceil(this.respawnTimer / 1000);
+        if (this.respawnTimer <= 0) {
+          this.dead = false;
+          this.reset();
+        }
+      }
+      return;
+    }
+
+    if (this.exploding) {
+      this.explodeTimer += dt;
+      const progress = Math.min(this.explodeTimer / 600, 1.0);
+      this.explodeScale = 1.0 + progress * 1.5;
+      if (this.explodeTimer >= 600) {
+        // Spawn fire particles
+        addParticles(this.px, this.py, 25, ['#FF4500','#FF8C00','#FFD700','#FF6347','#FFF'], 2, 5, 0.02);
+        addPopup(this.px, this.py - 20, '+150', '#FFD700', 20);
+        player.score += 150;
+        this.dead = true;
+        this.exploding = false;
+        this.respawnTimer = 4000;
+        this.respawnCountdown = 4;
+      }
+      return;
+    }
+
+    if (player.frozen && gameState !== STATE_HUNGRY) return;
+
+    this.frameCount++;
+    const moveInterval = powerMode ? Math.floor(GHOST_MOVE_INTERVAL / 0.6) : GHOST_MOVE_INTERVAL;
+    if (this.frameCount < moveInterval) return;
+    this.frameCount = 0;
+
+    if (this.inPen) {
+      this.exitTimer++;
+      if (this.exitTimer < this.exitDelay) return;
+      // Exit pen: move to col 10, then move up through gate (row 7) then row 6
+      if (this.penExitPhase === 0) {
+        // Move horizontally to col 10 (center of gate)
+        if (this.col < 10) { this.col++; }
+        else if (this.col > 10) { this.col--; }
+        else { this.penExitPhase = 1; }
+      } else if (this.penExitPhase === 1) {
+        // Move up through pen rows (4 tiles in rows 8-9), then gate (row 7), then free (row 6)
+        if (this.row > 6) {
+          this.row--;
+        } else {
+          this.inPen = false;
+          this.penExitPhase = 0;
+        }
+      }
+      const tc = getTileCenter(this.row, this.col);
+      this.px = tc.x; this.py = tc.y;
+      return;
+    }
+
+    // Move
+    if (this.fleeing) {
+      this.fleeMove();
+    } else {
+      this.chaseMove();
+    }
+    const tc = getTileCenter(this.row, this.col);
+    this.px = tc.x; this.py = tc.y;
+  }
+
+  chaseMove() {
+    const target = this.getTarget();
+    const path = bfsPath(this.row, this.col, target.row, target.col, true, false);
+    if (path.length > 0) {
+      this.row = path[0][0];
+      this.col = path[0][1];
+    } else {
+      this.randomMove();
+    }
+  }
+
+  fleeMove() {
+    // Flee: move away from player by choosing direction that maximizes distance
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    let bestDir = null;
+    let bestDist = -1;
+    for (const [dr, dc] of dirs) {
+      const nr = this.row + dr;
+      const nc = this.col + dc;
+      if (isPassable(nr, nc, true, false)) {
+        const dist = (nr - player.row) ** 2 + (nc - player.col) ** 2;
+        if (dist > bestDist) {
+          bestDist = dist;
+          bestDir = [dr, dc];
+        }
+      }
+    }
+    if (bestDir) {
+      this.row += bestDir[0];
+      this.col += bestDir[1];
+    } else {
+      this.randomMove();
+    }
+  }
+
+  randomMove() {
+    const dirs = [[-1,0],[1,0],[0,-1],[0,1]];
+    const valid = dirs.filter(([dr, dc]) => isPassable(this.row + dr, this.col + dc, true, false));
+    if (valid.length > 0) {
+      const [dr, dc] = valid[Math.floor(Math.random() * valid.length)];
+      this.row += dr; this.col += dc;
+    }
+  }
+
+  startExplode() {
+    this.exploding = true;
+    this.explodeTimer = 0;
+    this.explodeScale = 1.0;
+  }
+}
+
+let enemies = [];
+
+function initEnemies() {
+  enemies = [
+    new Enemy('naim', 8, 9, 'naim', 'direct'),
+    new Enemy('kaminai', 8, 11, 'kaminai', 'predictive')
+  ];
+}
+
+function updateEnemies(dt) {
+  for (const e of enemies) {
+    e.update(dt);
+  }
+}
+
+// =============================================================================
+// 10. BONUS & BOMB SYSTEM
+// =============================================================================
+let bonusItems = []; // {type, row, col, timer, px, py, pulse}
+let bombItems = []; // {row, col, px, py, pulse}
+const BOMB_COUNT = 5;
+const EXPLOSION_COLORS = ['#FF4500','#FF8C00','#FFD700','#FF6347','#FFF'];
+
+function getRandomDotCell() {
+  const cells = [];
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      if (maze[r][c] === 0) cells.push([r, c]);
+    }
+  }
+  if (cells.length === 0) return null;
+  return cells[Math.floor(Math.random() * cells.length)];
+}
+
+function initBombs() {
+  bombItems = [];
+  const placed = new Set();
+  for (let i = 0; i < BOMB_COUNT; i++) {
+    let attempts = 0;
+    while (attempts < 100) {
+      const cell = getRandomDotCell();
+      if (!cell) break;
+      const key = cell[0] * 100 + cell[1];
+      if (!placed.has(key)) {
+        placed.add(key);
+        const tc = getTileCenter(cell[0], cell[1]);
+        bombItems.push({ row: cell[0], col: cell[1], px: tc.x, py: tc.y, pulse: Math.random() * Math.PI * 2 });
+        break;
+      }
+      attempts++;
+    }
+  }
+}
+
+function spawnNewBomb() {
+  let attempts = 0;
+  while (attempts < 100) {
+    const cell = getRandomDotCell();
+    if (!cell) break;
+    const occupied = bombItems.some(b => b.row === cell[0] && b.col === cell[1]);
+    if (!occupied) {
+      const tc = getTileCenter(cell[0], cell[1]);
+      bombItems.push({ row: cell[0], col: cell[1], px: tc.x, py: tc.y, pulse: 0 });
+      break;
+    }
+    attempts++;
+  }
+}
+
+let bonusTimer1 = false, bonusTimer2 = false;
+let shiran_timer = 0;
+let shiran_interval = 30000;
+
+function initBonusItems() {
+  bonusItems = [];
+  bonusTimer1 = false;
+  bonusTimer2 = false;
+  shiran_timer = 0;
+}
+
+function updateBonusItems(dt) {
+  // Check for bibi/trump spawns based on dotsEaten
+  if (!bonusTimer1 && dotsEaten >= 70) {
+    bonusTimer1 = true;
+    const tc = getTileCenter(13, 5);
+    bonusItems.push({ type: 'bibi', row: 13, col: 5, px: tc.x, py: tc.y, timer: 10000, pulse: 0 });
+  }
+  if (!bonusTimer2 && dotsEaten >= 140) {
+    bonusTimer2 = true;
+    const tc = getTileCenter(13, 15);
+    bonusItems.push({ type: 'trump', row: 13, col: 15, px: tc.x, py: tc.y, timer: 10000, pulse: 0 });
+  }
+
+  // Shiran periodic spawn
+  shiran_timer += dt;
+  if (shiran_timer >= shiran_interval) {
+    shiran_timer = 0;
+    const noShiran = !bonusItems.some(b => b.type === 'shiran');
+    if (noShiran) {
+      const cell = getRandomDotCell();
+      if (cell) {
+        const tc = getTileCenter(cell[0], cell[1]);
+        bonusItems.push({ type: 'shiran', row: cell[0], col: cell[1], px: tc.x, py: tc.y, timer: 8000, pulse: 0 });
+      }
+    }
+  }
+
+  // Update timers and pulse
+  bonusItems = bonusItems.filter(b => {
+    b.timer -= dt;
+    b.pulse += BONUS_PULSE_SPEED;
+    return b.timer > 0;
+  });
+
+  // Update bomb pulse
+  for (const b of bombItems) {
+    b.pulse += BOMB_PULSE_SPEED;
+  }
+}
+
+// =============================================================================
+// 11. COLLISION DETECTION
+// =============================================================================
+function checkPlayerEatDot() {
+  const r = player.row, c = player.col;
+  if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
+  const v = maze[r][c];
+  if (v === 0) {
+    maze[r][c] = 2;
+    player.score += 10;
+    dotsEaten++;
+    playDotEatSound();
+    if (dotsEaten >= totalDots) {
+      triggerWin();
+    }
+  } else if (v === 3) {
+    maze[r][c] = 2;
+    player.score += 50;
+    dotsEaten++;
+    playPowerPelletSound();
+    activatePowerMode();
+    if (dotsEaten >= totalDots) triggerWin();
+  }
+}
+
+function checkPlayerEatBonus() {
+  for (let i = bonusItems.length - 1; i >= 0; i--) {
+    const b = bonusItems[i];
+    if (b.row === player.row && b.col === player.col) {
+      const pts = b.type === 'bibi' ? 500 : b.type === 'trump' ? 300 : 1000;
+      player.score += pts;
+      addPopup(b.px, b.py - 20, `+${pts}`, '#FFD700', 22);
+      bonusItems.splice(i, 1);
+    }
+  }
+}
+
+function checkPlayerEatBomb() {
+  for (let i = bombItems.length - 1; i >= 0; i--) {
+    const b = bombItems[i];
+    if (b.row === player.row && b.col === player.col) {
+      bombItems.splice(i, 1);
+      playExplosionSound();
+      // Explode all active enemies
+      for (const e of enemies) {
+        if (!e.dead && !e.exploding && !e.inPen) {
+          e.startExplode();
+        }
+      }
+      // Spawn new bomb
+      spawnNewBomb();
+      break;
+    }
+  }
+}
+
+function checkEnemyCollision() {
+  for (const e of enemies) {
+    if (e.dead || e.exploding || e.inPen) continue;
+    if (e.row === player.row && e.col === player.col) {
+      if (powerMode && e.fleeing) {
+        // Eat ghost
+        e.dead = true;
+        e.respawnTimer = 3000;
+        e.respawnCountdown = 3;
+        const pts = powerGhostScore;
+        powerGhostScore = Math.min(powerGhostScore * 2, 1600);
+        player.score += pts;
+        triggerEnemyEating(e.px, e.py, pts);
+      } else if (!powerMode) {
+        triggerPlayerDeath();
+        return;
+      }
+    }
+  }
+}
+
+// =============================================================================
+// 12. GAME STATE MANAGEMENT
+// =============================================================================
+let gameState = STATE_START;
+let flashTimer = 0;
+let deathTimer = 0;
+let hungryTimer = 0;
+let nextHungryTime = 0;
+let hungryBubbleTimer = 0;
+let hungryMouthPhase = 0;
+let pulsePP = 0; // power pellet pulse
+let globalTime = 0;
+let warpFlash = false;
+let warpFlashTimer = 0;
+
+function activatePowerMode() {
+  powerMode = true;
+  powerTimer = POWER_MODE_DURATION;
+  powerGhostScore = 200;
+  for (const e of enemies) {
+    if (!e.dead && !e.inPen) {
+      e.fleeing = true;
+      e.fleeFlash = false;
+    }
+  }
+}
+
+function deactivatePowerMode() {
+  powerMode = false;
+  for (const e of enemies) {
+    e.fleeing = false;
+    e.fleeFlash = false;
+  }
+}
+
+function triggerEnemyEating(ex, ey, pts) {
+  // Freeze player
+  player.frozen = true;
+  player.frozenTimer = 800;
+  player.dancing = true;
+  player.danceTimer = 0;
+  player.danceAngle = 0;
+  player.danceScale = 1.0;
+  // Speech
+  speak('אוי זה כואב!', 2.0, 1.2);
+  // Laugh sound
+  playLaughSound();
+  // Score popup
+  addPopup(ex, ey - 30, `+${pts}`, '#00FF88', 20);
+  // Emoji popup
+  addPopup(player.px, player.py - 40, '😂', '#FFD700', 26);
+}
+
+function triggerPlayerDeath() {
+  if (gameState !== STATE_PLAYING) return;
+  gameState = STATE_DYING;
+  deathTimer = 1500;
+  player.lives--;
+  playDeathSound();
+  flashTimer = 0;
+}
+
+function triggerWin() {
+  gameState = STATE_WIN;
+  stopMusic();
+  playEndingTune(true);
+}
+
+function triggerGameOver() {
+  gameState = STATE_GAMEOVER;
+  stopMusic();
+  playEndingTune(false);
+}
+
+function startHungryPause() {
+  gameState = STATE_HUNGRY;
+  hungryTimer = 2000;
+  hungryBubbleTimer = 0;
+  hungryMouthPhase = 0;
+  speak('וואי אני רעב!', 2.2, 0.85);
+  scheduleNextHungry();
+}
+
+function scheduleNextHungry() {
+  nextHungryTime = globalTime + HUNGRY_INTERVAL_MIN + Math.random() * (HUNGRY_INTERVAL_MAX - HUNGRY_INTERVAL_MIN);
+}
+
+function updatePowerMode(dt) {
+  if (!powerMode) return;
+  powerTimer -= dt;
+  if (powerTimer <= 0) {
+    deactivatePowerMode();
+    return;
+  }
+  // Flash warning in last 2 seconds
+  if (powerTimer < 2000) {
+    const flashRate = 200;
+    const flashPhase = Math.floor(powerTimer / flashRate) % 2;
+    for (const e of enemies) {
+      if (!e.dead && e.fleeing) {
+        e.fleeFlash = flashPhase === 1;
+      }
+    }
+  }
+}
+
+function initGame() {
+  initMaze();
+  initPlayer();
+  initEnemies();
+  initBonusItems();
+  initBombs();
+  initJets();
+  particles = [];
+  popups = [];
+  powerMode = false;
+  powerTimer = 0;
+  globalTime = 0;
+  scheduleNextHungry();
+  startMusic();
+}
+
+function fullReset() {
+  player.score = 0;
+  player.lives = 3;
+  initGame();
+  gameState = STATE_PLAYING;
+}
+
+// =============================================================================
+// 13. INPUT HANDLER
+// =============================================================================
+const keys = {};
+
+window.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  if (e.code === 'ArrowLeft') { player.nextDx = -1; player.nextDy = 0; }
+  if (e.code === 'ArrowRight') { player.nextDx = 1; player.nextDy = 0; }
+  if (e.code === 'ArrowUp') { player.nextDx = 0; player.nextDy = -1; }
+  if (e.code === 'ArrowDown') { player.nextDx = 0; player.nextDy = 1; }
+  if (e.code === 'Enter') {
+    if (gameState === STATE_START) {
+      fullReset();
+    } else if (gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
+      fullReset();
+    }
+  }
+  if (e.code === 'KeyP' && gameState === STATE_PLAYING) {
+    gameState = STATE_PAUSED;
+  } else if (e.code === 'KeyP' && gameState === STATE_PAUSED) {
+    gameState = STATE_PLAYING;
+  }
+  e.preventDefault();
+});
+
+window.addEventListener('keyup', e => {
+  keys[e.code] = false;
+});
+
+// =============================================================================
+// 14. RENDER FUNCTIONS
+// =============================================================================
+
+function drawMaze() {
+  for (let r = 0; r < ROWS; r++) {
+    for (let c = 0; c < COLS; c++) {
+      const x = OFFSET_X + c * TILE;
+      const y = OFFSET_Y + r * TILE;
+      const v = maze[r][c];
+
+      if (v === 1) {
+        // Wall
+        ctx.fillStyle = '#0d3380';
+        ctx.fillRect(x, y, TILE, TILE);
+        // Inner glow border
+        ctx.strokeStyle = '#2255cc';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 0.5, y + 0.5, TILE - 1, TILE - 1);
+      } else if (v === 4) {
+        // Ghost pen interior
+        ctx.fillStyle = '#1a0033';
+        ctx.fillRect(x, y, TILE, TILE);
+      } else if (v === 2) {
+        // Check if ghost gate row 7
+        if (r === 7 && c >= 9 && c <= 11) {
+          // Ghost gate - semi-transparent yellow line
+          ctx.fillStyle = 'rgba(0,0,0,0)';
+          ctx.fillRect(x, y, TILE, TILE);
+          ctx.strokeStyle = 'rgba(255, 220, 0, 0.7)';
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(x, y + TILE / 2);
+          ctx.lineTo(x + TILE, y + TILE / 2);
+          ctx.stroke();
+        }
+        // else just empty / no-dot
+      } else if (v === 0) {
+        // Dot
+        ctx.fillStyle = '#fff';
+        ctx.beginPath();
+        ctx.arc(x + TILE / 2, y + TILE / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+      } else if (v === 3) {
+        // Power pellet - pulsing
+        pulsePP += 0.0; // already updated in loop
+        const scale = 0.7 + Math.sin(globalTime / 200) * 0.3;
+        const rad = 7 * scale;
+        const cx2 = x + TILE / 2, cy2 = y + TILE / 2;
+        const grd = ctx.createRadialGradient(cx2, cy2, 1, cx2, cy2, rad);
+        grd.addColorStop(0, '#fff');
+        grd.addColorStop(0.6, '#FFE000');
+        grd.addColorStop(1, 'rgba(255,220,0,0)');
+        ctx.fillStyle = grd;
+        ctx.beginPath();
+        ctx.arc(cx2, cy2, rad, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+  }
+
+  // Draw ghost pen walls that overlap pen interior on row 8/9
+  // The gate line already handled above
+}
+
+function drawPlayer() {
+  const img = images['shaked'];
+  if (!img) return;
+  ctx.save();
+  const x = player.px;
+  const y = player.py + player.bobAmt;
+  ctx.translate(x, y);
+  if (player.dancing) {
+    ctx.rotate(player.danceAngle);
+    ctx.scale(player.danceScale, player.danceScale);
+  }
+  ctx.drawImage(img, -18, -18, 36, 36);
+  ctx.restore();
+}
+
+function drawEnemies() {
+  for (const e of enemies) {
+    if (e.dead) {
+      // Show countdown
+      if (e.respawnTimer > 0) {
+        ctx.save();
+        const tc = getTileCenter(e.startRow, e.startCol);
+        ctx.font = 'bold 16px Arial';
+        ctx.fillStyle = '#FFA500';
+        ctx.textAlign = 'center';
+        ctx.fillText(e.respawnCountdown + '', tc.x, tc.y);
+        ctx.restore();
+      }
+      continue;
+    }
+    const img = images[e.imgKey];
+    if (!img) continue;
+    ctx.save();
+    ctx.translate(e.px, e.py);
+    if (e.exploding) {
+      ctx.scale(e.explodeScale, e.explodeScale);
+    }
+    ctx.drawImage(img, -16, -16, 32, 32);
+    // Power mode overlay
+    if (powerMode && e.fleeing && !e.fleeFlash) {
+      ctx.fillStyle = 'rgba(0, 0, 255, 0.5)';
+      ctx.fillRect(-16, -16, 32, 32);
+    }
+    ctx.restore();
+  }
+}
+
+function drawBonusItems() {
+  for (const b of bonusItems) {
+    const img = images[b.type];
+    if (!img) continue;
+    const scale = 0.9 + Math.sin(b.pulse) * 0.1;
+    ctx.save();
+    ctx.translate(b.px, b.py);
+    ctx.scale(scale, scale);
+    ctx.drawImage(img, -16, -16, 32, 32);
+    ctx.restore();
+  }
+}
+
+function drawBombs() {
+  for (const b of bombItems) {
+    const scale = 0.8 + Math.sin(b.pulse) * 0.2;
+    ctx.save();
+    ctx.translate(b.px, b.py);
+    ctx.scale(scale, scale);
+    ctx.font = '24px Arial';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('💣', 0, 0);
+    ctx.restore();
+  }
+}
+
+function drawHUD() {
+  // Background bar
+  ctx.fillStyle = 'rgba(0, 0, 30, 0.85)';
+  ctx.fillRect(0, 0, CANVAS_W, OFFSET_Y);
+
+  // Title center
+  ctx.save();
+  ctx.font = 'bold 18px Arial';
+  ctx.fillStyle = '#FFD700';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('שאגת הארי', CANVAS_W / 2, OFFSET_Y / 2);
+  ctx.restore();
+
+  // Score top-left
+  ctx.save();
+  ctx.font = 'bold 16px Arial';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ניקוד: ' + player.score, 10, OFFSET_Y / 2);
+  ctx.restore();
+
+  // Lives top-right as icons
+  const lifeImg = images['shaked'];
+  const lifeSize = 22;
+  for (let i = 0; i < player.lives; i++) {
+    const lx = CANVAS_W - 20 - (i + 1) * (lifeSize + 4);
+    if (lifeImg) {
+      ctx.drawImage(lifeImg, lx, 4, lifeSize, lifeSize);
+    } else {
+      ctx.fillStyle = '#FFFF00';
+      ctx.beginPath();
+      ctx.arc(lx + lifeSize / 2, lifeSize / 2, lifeSize / 2, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Power mode indicator
+  if (powerMode) {
+    ctx.save();
+    ctx.font = '13px Arial';
+    ctx.fillStyle = '#44AAFF';
+    ctx.textAlign = 'center';
+    ctx.fillText('כוח! ' + Math.ceil(powerTimer / 1000) + 'ש', CANVAS_W / 2, OFFSET_Y - 4);
+    ctx.restore();
+  }
+}
+
+function drawHungryBubble() {
+  const cx = player.px;
+  const cy = player.py - 50;
+  const w = 180, h = 50;
+  // Bubble
+  ctx.save();
+  ctx.fillStyle = 'white';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2;
+  const bx = cx - w / 2, by = cy - h / 2;
+  ctx.beginPath();
+  ctx.roundRect(bx, by, w, h, 10);
+  ctx.fill();
+  ctx.stroke();
+  // Tail
+  ctx.beginPath();
+  ctx.moveTo(cx - 10, cy + h / 2);
+  ctx.lineTo(cx, cy + h / 2 + 12);
+  ctx.lineTo(cx + 10, cy + h / 2);
+  ctx.fill();
+  ctx.stroke();
+  // Text
+  ctx.font = 'bold 16px Arial';
+  ctx.fillStyle = '#000';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('וואי אני רעב!', cx, cy);
+  // Mouth animation (black ellipse on player)
+  const mouthScale = 0.3 + Math.abs(Math.sin(hungryBubbleTimer / 200)) * 0.7;
+  ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+  ctx.beginPath();
+  ctx.ellipse(player.px, player.py + 6, 10, 8 * mouthScale, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawStartScreen() {
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.save();
+  ctx.font = 'bold 56px Arial';
+  ctx.fillStyle = '#FFD700';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('שאגת הארי', CANVAS_W / 2, CANVAS_H / 2 - 60);
+  ctx.font = '20px Arial';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('משחק פק-מן עברי', CANVAS_W / 2, CANVAS_H / 2 - 10);
+  // Blinking prompt
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.font = 'bold 22px Arial';
+    ctx.fillStyle = '#00FFFF';
+    ctx.fillText('לחץ ENTER להתחיל', CANVAS_W / 2, CANVAS_H / 2 + 60);
+  }
+  // Decorative player image
+  const img = images['shaked'];
+  if (img) ctx.drawImage(img, CANVAS_W / 2 - 30, CANVAS_H / 2 + 100, 60, 60);
+  ctx.restore();
+}
+
+function drawGameOverScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.save();
+  ctx.font = 'bold 60px Arial';
+  ctx.fillStyle = '#FF2200';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('GAME OVER', CANVAS_W / 2, CANVAS_H / 2 - 60);
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#FFD700';
+  ctx.fillText('ניקוד סופי: ' + player.score, CANVAS_W / 2, CANVAS_H / 2 + 10);
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.font = '22px Arial';
+    ctx.fillStyle = '#FFFFFF';
+    ctx.fillText('לחץ ENTER לניסיון נוסף', CANVAS_W / 2, CANVAS_H / 2 + 70);
+  }
+  ctx.restore();
+}
+
+function drawWinScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.75)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.save();
+  ctx.font = 'bold 54px Arial';
+  ctx.fillStyle = '#FFD700';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('ניצחת! 🎉', CANVAS_W / 2, CANVAS_H / 2 - 60);
+  ctx.font = 'bold 28px Arial';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.fillText('ניקוד סופי: ' + player.score, CANVAS_W / 2, CANVAS_H / 2 + 10);
+  if (Math.floor(Date.now() / 500) % 2 === 0) {
+    ctx.font = '22px Arial';
+    ctx.fillStyle = '#00FFFF';
+    ctx.fillText('לחץ ENTER לשחק שוב', CANVAS_W / 2, CANVAS_H / 2 + 70);
+  }
+  ctx.restore();
+}
+
+function drawPausedScreen() {
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+  ctx.save();
+  ctx.font = 'bold 48px Arial';
+  ctx.fillStyle = '#FFFFFF';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('השהייה', CANVAS_W / 2, CANVAS_H / 2);
+  ctx.font = '22px Arial';
+  ctx.fillStyle = '#AAAAAA';
+  ctx.fillText('לחץ P להמשיך', CANVAS_W / 2, CANVAS_H / 2 + 50);
+  ctx.restore();
+}
+
+function drawDeathFlash(timer) {
+  const alpha = Math.sin((1500 - timer) / 1500 * Math.PI) * 0.6;
+  ctx.fillStyle = `rgba(255, 0, 0, ${alpha})`;
+  ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+}
+
+function drawAllGameplay() {
+  drawBackground();
+  drawMaze();
+  drawBonusItems();
+  drawBombs();
+  drawEnemies();
+  drawPlayer();
+  drawParticles();
+  drawHUD();
+}
+
+// =============================================================================
+// 15. GAME LOOP (update + draw)
+// =============================================================================
+let lastTime = 0;
+let blink = false;
+let blinkTimer = 0;
+
+function update(dt) {
+  globalTime += dt;
+  updateJets();
+  updateParticles();
+
+  if (gameState === STATE_PLAYING) {
+    updatePlayer(dt);
+    updateEnemies(dt);
+    updateBonusItems(dt);
+    updatePowerMode(dt);
+    checkPlayerEatDot();
+    checkPlayerEatBonus();
+    checkPlayerEatBomb();
+    checkEnemyCollision();
+    // Hungry pause check
+    if (globalTime >= nextHungryTime) {
+      startHungryPause();
+    }
+  } else if (gameState === STATE_DYING) {
+    deathTimer -= dt;
+    flashTimer += dt;
+    if (deathTimer <= 0) {
+      if (player.lives <= 0) {
+        triggerGameOver();
+      } else {
+        resetPlayerPosition();
+        for (const e of enemies) {
+          if (!e.dead) e.reset();
+        }
+        gameState = STATE_PLAYING;
+      }
+    }
+  } else if (gameState === STATE_HUNGRY) {
+    hungryTimer -= dt;
+    hungryBubbleTimer += dt;
+    hungryMouthPhase += dt;
+    if (hungryTimer <= 0) {
+      gameState = STATE_PLAYING;
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, CANVAS_W, CANVAS_H);
+
+  if (gameState === STATE_START) {
+    drawStartScreen();
+    return;
+  }
+
+  if (gameState === STATE_GAMEOVER) {
+    drawAllGameplay();
+    drawGameOverScreen();
+    return;
+  }
+
+  if (gameState === STATE_WIN) {
+    drawAllGameplay();
+    drawWinScreen();
+    return;
+  }
+
+  if (gameState === STATE_PLAYING || gameState === STATE_DYING || gameState === STATE_HUNGRY) {
+    drawAllGameplay();
+    if (gameState === STATE_DYING) {
+      drawDeathFlash(deathTimer);
+    }
+    if (gameState === STATE_HUNGRY) {
+      drawHungryBubble();
+    }
+    return;
+  }
+
+  if (gameState === STATE_PAUSED) {
+    drawAllGameplay();
+    drawPausedScreen();
+    return;
+  }
+}
+
+function gameLoop(timestamp) {
+  const dt = Math.min(timestamp - lastTime, 50); // cap dt at 50ms
+  lastTime = timestamp;
+  update(dt);
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// =============================================================================
+// 16. INIT & START
+// =============================================================================
+initMaze();
+initJets();
+particles = [];
+popups = [];
+
+loadImages(() => {
+  gameState = STATE_START;
+  lastTime = performance.now();
+  requestAnimationFrame(gameLoop);
+});
+</script>
+</body>
+</html>

@@ -10,16 +10,16 @@
   #gameWrapper { position: relative; line-height: 0; }
   canvas { display: block; touch-action: none; }
 
-  /* D-pad overlay – floats over the bottom of the canvas */
+  /* D-pad – floats on the RIGHT side of the canvas (over the empty black border) */
   #touchControls {
     display: none;
     position: absolute;
-    bottom: 0; left: 0; right: 0;
-    flex-direction: row;
-    align-items: flex-end;
-    justify-content: space-between;
-    padding: 8px 12px 10px;
-    background: linear-gradient(transparent, rgba(0,0,0,0.5));
+    right: 4px;
+    top: 50%;
+    transform: translateY(-50%);
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
     user-select: none; -webkit-user-select: none;
     pointer-events: none;
   }
@@ -27,47 +27,47 @@
 
   .dpad {
     display: grid;
-    grid-template-columns: repeat(3, var(--btn, 48px));
-    grid-template-rows: repeat(3, var(--btn, 48px));
-    gap: 4px;
+    grid-template-columns: repeat(3, var(--btn, 38px));
+    grid-template-rows: repeat(3, var(--btn, 38px));
+    gap: 3px;
     direction: ltr;
   }
   .dpad-btn {
-    width: var(--btn, 48px); height: var(--btn, 48px);
-    background: radial-gradient(circle at 40% 35%, rgba(255,210,0,0.6), rgba(160,100,0,0.4));
-    border: 2px solid rgba(255,200,0,0.75);
+    width: var(--btn, 38px); height: var(--btn, 38px);
+    background: radial-gradient(circle at 40% 35%, rgba(255,210,0,0.55), rgba(140,85,0,0.4));
+    border: 1.5px solid rgba(255,200,0,0.7);
     border-radius: 50%;
     color: #fff;
-    font-size: var(--btn-font, 20px);
+    font-size: var(--btn-font, 16px);
+    font-style: normal;
     text-shadow: 0 1px 3px rgba(0,0,0,0.9);
     display: flex; align-items: center; justify-content: center;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,180,0.35);
+    box-shadow: 0 2px 6px rgba(0,0,0,0.7), inset 0 1px 0 rgba(255,255,180,0.3);
     transition: transform 0.07s;
   }
   .dpad-btn:active {
     background: radial-gradient(circle at 40% 35%, rgba(255,240,80,0.8), rgba(200,140,0,0.6));
-    transform: scale(0.90);
+    transform: scale(0.88);
   }
   .dpad-blank { background: transparent !important; border: none !important; box-shadow: none !important; }
 
   #actionBtn {
-    padding: 10px 20px;
+    padding: 6px 14px;
     background: rgba(255,220,0,0.18);
-    border: 2px solid rgba(255,220,0,0.65);
-    border-radius: 22px;
+    border: 1.5px solid rgba(255,220,0,0.65);
+    border-radius: 16px;
     color: #ffd700;
-    font-size: 14px;
+    font-size: 12px;
     font-family: 'Arial', sans-serif;
     cursor: pointer;
     -webkit-tap-highlight-color: transparent;
     touch-action: manipulation;
-    box-shadow: 0 3px 8px rgba(0,0,0,0.7);
-    align-self: center;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.7);
   }
-  #actionBtn:active { background: rgba(255,220,0,0.45); transform: scale(0.95); }
+  #actionBtn:active { background: rgba(255,220,0,0.45); transform: scale(0.94); }
 
   /* Show D-pad only on touch/small screens in landscape */
   @media (max-width: 1024px) and (orientation: landscape) { #touchControls { display: flex; } }
@@ -97,13 +97,13 @@
 <div id="touchControls">
   <div class="dpad">
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnUp">⬆</button>
+    <button class="dpad-btn" id="btnUp">▲</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnLeft">⬅</button>
+    <button class="dpad-btn" id="btnLeft">◀</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnRight">➡</button>
+    <button class="dpad-btn" id="btnRight">▶</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnDown">⬇</button>
+    <button class="dpad-btn" id="btnDown">▼</button>
     <div class="dpad-btn dpad-blank"></div>
   </div>
   <button id="actionBtn">▶ / ⏸</button>
@@ -1838,8 +1838,8 @@ function resizeCanvas() {
   canvas.style.height = h;
   const wrapper = document.getElementById('gameWrapper');
   if (wrapper) { wrapper.style.width = w; wrapper.style.height = h; }
-  const btnPx = Math.max(40, Math.min(60, Math.round(CANVAS_H * scale * 0.1)));
-  const fontPx = Math.max(16, Math.round(btnPx * 0.42));
+  const btnPx = Math.max(32, Math.min(46, Math.round(CANVAS_H * scale * 0.08)));
+  const fontPx = Math.max(13, Math.round(btnPx * 0.40));
   document.documentElement.style.setProperty('--btn', btnPx + 'px');
   document.documentElement.style.setProperty('--btn-font', fontPx + 'px');
 }

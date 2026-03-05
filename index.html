@@ -6,7 +6,7 @@
 <title>שאגת הארי</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
+  body { background: #000; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; height: 100dvh; overflow: hidden; font-family: 'Arial', sans-serif; }
   #gameWrapper { position: relative; line-height: 0; }
   canvas { display: block; touch-action: none; }
 
@@ -1827,14 +1827,17 @@ function isTouchDevice() {
 }
 
 function resizeCanvas() {
-  const scale = Math.min(window.innerWidth / CANVAS_W, window.innerHeight / CANVAS_H);
+  // visualViewport gives the truly visible area, excluding browser chrome/nav bar
+  const vp = window.visualViewport;
+  const vw = vp ? vp.width  : window.innerWidth;
+  const vh = vp ? vp.height : window.innerHeight;
+  const scale = Math.min(vw / CANVAS_W, vh / CANVAS_H);
   const w = (CANVAS_W * scale) + 'px';
   const h = (CANVAS_H * scale) + 'px';
   canvas.style.width = w;
   canvas.style.height = h;
   const wrapper = document.getElementById('gameWrapper');
   if (wrapper) { wrapper.style.width = w; wrapper.style.height = h; }
-  // Scale D-pad buttons proportionally so they don't dominate the canvas
   const btnPx = Math.max(40, Math.min(60, Math.round(CANVAS_H * scale * 0.1)));
   const fontPx = Math.max(16, Math.round(btnPx * 0.42));
   document.documentElement.style.setProperty('--btn', btnPx + 'px');
@@ -1890,6 +1893,9 @@ function setupTouchControls() {
 }
 
 window.addEventListener('resize', resizeCanvas);
+// orientationchange fires before the new dimensions are stable — wait 350ms
+window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 350));
+if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 setupTouchControls();
 </script>

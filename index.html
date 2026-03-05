@@ -2,16 +2,38 @@
 <html lang="he" dir="rtl">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>שאגת הארי</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; display: flex; justify-content: center; align-items: center; height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
-  canvas { display: block; }
+  body { background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
+  canvas { display: block; touch-action: none; }
+  #touchControls { display: none; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; user-select: none; -webkit-user-select: none; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 4px; }
+  .dpad-btn { width: 60px; height: 60px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.35); border-radius: 10px; color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  .dpad-btn:active { background: rgba(255,255,255,0.35); }
+  .dpad-blank { background: transparent !important; border: none !important; }
+  #actionBtn { padding: 10px 30px; background: rgba(255,220,0,0.15); border: 2px solid rgba(255,220,0,0.55); border-radius: 22px; color: #ffd700; font-size: 16px; font-family: 'Arial', sans-serif; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
+  #actionBtn:active { background: rgba(255,220,0,0.4); }
+  @media (max-width: 900px) { #touchControls { display: flex; } }
 </style>
 </head>
 <body>
 <canvas id="gameCanvas" width="800" height="600"></canvas>
+<div id="touchControls">
+  <div class="dpad">
+    <div class="dpad-btn dpad-blank"></div>
+    <button class="dpad-btn" id="btnUp">▲</button>
+    <div class="dpad-btn dpad-blank"></div>
+    <button class="dpad-btn" id="btnLeft">◀</button>
+    <div class="dpad-btn dpad-blank"></div>
+    <button class="dpad-btn" id="btnRight">▶</button>
+    <div class="dpad-btn dpad-blank"></div>
+    <button class="dpad-btn" id="btnDown">▼</button>
+    <div class="dpad-btn dpad-blank"></div>
+  </div>
+  <button id="actionBtn">התחל / השהה</button>
+</div>
 <script>
 // =============================================================================
 // 1. CONSTANTS & CONFIGURATION
@@ -1714,6 +1736,74 @@ loadImages(() => {
   lastTime = performance.now();
   requestAnimationFrame(gameLoop);
 });
+
+// =============================================================================
+// 17. MOBILE & TOUCH SUPPORT
+// =============================================================================
+function isTouchDevice() {
+  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+}
+
+function resizeCanvas() {
+  const controlsH = isTouchDevice() ? 175 : 0;
+  const scaleX = window.innerWidth / CANVAS_W;
+  const scaleY = (window.innerHeight - controlsH) / CANVAS_H;
+  const scale = Math.min(scaleX, scaleY, 1);
+  canvas.style.width = (CANVAS_W * scale) + 'px';
+  canvas.style.height = (CANVAS_H * scale) + 'px';
+}
+
+function setupTouchControls() {
+  if (!isTouchDevice()) return;
+  document.getElementById('touchControls').style.display = 'flex';
+
+  function addDirBtn(id, dx, dy) {
+    const btn = document.getElementById(id);
+    if (!btn) return;
+    btn.addEventListener('touchstart', e => {
+      e.preventDefault();
+      player.nextDx = dx; player.nextDy = dy;
+    }, { passive: false });
+  }
+  addDirBtn('btnUp',     0, -1);
+  addDirBtn('btnDown',   0,  1);
+  addDirBtn('btnLeft',  -1,  0);
+  addDirBtn('btnRight',  1,  0);
+
+  document.getElementById('actionBtn').addEventListener('touchstart', e => {
+    e.preventDefault();
+    if (gameState === STATE_START || gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
+      fullReset();
+    } else if (gameState === STATE_PLAYING) {
+      gameState = STATE_PAUSED;
+    } else if (gameState === STATE_PAUSED) {
+      gameState = STATE_PLAYING;
+    }
+  }, { passive: false });
+
+  // Swipe support on canvas
+  let swipeStartX = 0, swipeStartY = 0;
+  canvas.addEventListener('touchstart', e => {
+    swipeStartX = e.touches[0].clientX;
+    swipeStartY = e.touches[0].clientY;
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener('touchend', e => {
+    const ddx = e.changedTouches[0].clientX - swipeStartX;
+    const ddy = e.changedTouches[0].clientY - swipeStartY;
+    if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) return;
+    if (Math.abs(ddx) > Math.abs(ddy)) {
+      player.nextDx = ddx > 0 ? 1 : -1; player.nextDy = 0;
+    } else {
+      player.nextDx = 0; player.nextDy = ddy > 0 ? 1 : -1;
+    }
+    e.preventDefault();
+  }, { passive: false });
+}
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+setupTouchControls();
 </script>
 </body>
 </html>

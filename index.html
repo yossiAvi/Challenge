@@ -21,9 +21,7 @@
     align-items: center;
     gap: 6px;
     user-select: none; -webkit-user-select: none;
-    pointer-events: none;
   }
-  #touchControls > * { pointer-events: all; }
 
   .dpad {
     display: grid;
@@ -1630,7 +1628,7 @@ function drawStartScreen() {
   if (Math.floor(Date.now() / 500) % 2 === 0) {
     ctx.font = 'bold 22px Arial';
     ctx.fillStyle = '#00FFFF';
-    ctx.fillText('לחץ ENTER להתחיל', CANVAS_W / 2, CANVAS_H / 2 + 60);
+    ctx.fillText('לחץ ENTER או הקש על המסך', CANVAS_W / 2, CANVAS_H / 2 + 60);
   }
   // Decorative player image
   const img = images['shaked'];
@@ -1861,8 +1859,7 @@ function setupTouchControls() {
   addDirBtn('btnLeft',  -1,  0);
   addDirBtn('btnRight',  1,  0);
 
-  document.getElementById('actionBtn').addEventListener('touchstart', e => {
-    e.preventDefault();
+  function handleActionBtn() {
     if (gameState === STATE_START || gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
       fullReset();
     } else if (gameState === STATE_PLAYING) {
@@ -1870,9 +1867,13 @@ function setupTouchControls() {
     } else if (gameState === STATE_PAUSED) {
       gameState = STATE_PLAYING;
     }
-  }, { passive: false });
+  }
+  const actionBtn = document.getElementById('actionBtn');
+  // Use both touchstart and click for iOS compatibility
+  actionBtn.addEventListener('touchstart', e => { e.preventDefault(); handleActionBtn(); }, { passive: false });
+  actionBtn.addEventListener('click', handleActionBtn);
 
-  // Swipe support on canvas
+  // Swipe/tap support on canvas
   let swipeStartX = 0, swipeStartY = 0;
   canvas.addEventListener('touchstart', e => {
     swipeStartX = e.touches[0].clientX;
@@ -1882,7 +1883,13 @@ function setupTouchControls() {
   canvas.addEventListener('touchend', e => {
     const ddx = e.changedTouches[0].clientX - swipeStartX;
     const ddy = e.changedTouches[0].clientY - swipeStartY;
-    if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) return;
+    // Tap (no swipe) → start or restart game
+    if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) {
+      if (gameState === STATE_START || gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
+        fullReset();
+      }
+      return;
+    }
     if (Math.abs(ddx) > Math.abs(ddy)) {
       player.nextDx = ddx > 0 ? 1 : -1; player.nextDy = 0;
     } else {
@@ -1895,6 +1902,8 @@ function setupTouchControls() {
 window.addEventListener('resize', resizeCanvas);
 // orientationchange fires before the new dimensions are stable — wait 350ms
 window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 350));
+// iOS Safari: screen.orientation API for reliable rotation detection
+try { screen.orientation.addEventListener('change', () => setTimeout(resizeCanvas, 350)); } catch(e) {}
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resizeCanvas);
 resizeCanvas();
 setupTouchControls();

@@ -198,20 +198,28 @@ let musicGain = null;
 let percGain = null;
 
 const MELODY = [
-  [523,0.25],[523,0.25],[523,0.25],[415,0.75],[622,0.25],
-  [523,0.25],[415,0.25],[622,0.75],[784,1.0],[698,0.25],
-  [659,0.25],[622,0.25],[587,0.75],[523,0.25],[415,0.25],
-  [349,0.25],[440,0.75],[523,1.5]
+  // Opening fanfare
+  [523,0.125],[659,0.125],[784,0.125],[1047,0.25],[880,0.125],[784,0.25],
+  // Main theme - first phrase
+  [784,0.25],[698,0.125],[784,0.125],[880,0.5],[0,0.25],
+  [880,0.25],[784,0.125],[698,0.125],[659,0.5],[0,0.25],
+  // Second phrase - builds higher
+  [659,0.25],[698,0.25],[784,0.25],[880,0.25],
+  [988,0.125],[0,0.125],[988,0.125],[0,0.125],[988,0.375],[880,0.125],
+  // Rapid chromatic run down
+  [784,0.125],[740,0.125],[698,0.125],[659,0.125],[622,0.125],[587,0.125],[554,0.125],[523,0.125],
+  // Triumphant ending
+  [523,0.5],[659,0.25],[784,0.25],[1047,1.0]
 ];
 
 function getAudioCtx() {
   if (!audioCtx) {
     audioCtx = new (window.AudioContext || window.webkitAudioContext)();
     musicGain = audioCtx.createGain();
-    musicGain.gain.value = 0.12;
+    musicGain.gain.value = 0.18;
     musicGain.connect(audioCtx.destination);
     percGain = audioCtx.createGain();
-    percGain.gain.value = 0.08;
+    percGain.gain.value = 0.14;
     percGain.connect(audioCtx.destination);
   }
   return audioCtx;
@@ -239,31 +247,78 @@ function scheduleKick(startT) {
   const osc = ac.createOscillator();
   const g = ac.createGain();
   osc.type = 'sine';
-  osc.frequency.setValueAtTime(60, startT);
-  osc.frequency.exponentialRampToValueAtTime(20, startT + 0.3);
-  g.gain.setValueAtTime(0.8, startT);
-  g.gain.exponentialRampToValueAtTime(0.001, startT + 0.3);
+  osc.frequency.setValueAtTime(80, startT);
+  osc.frequency.exponentialRampToValueAtTime(25, startT + 0.25);
+  g.gain.setValueAtTime(1.0, startT);
+  g.gain.exponentialRampToValueAtTime(0.001, startT + 0.25);
   osc.connect(g);
   g.connect(percGain);
   osc.start(startT);
-  osc.stop(startT + 0.35);
+  osc.stop(startT + 0.3);
+}
+
+function scheduleSnare(startT) {
+  const ac = getAudioCtx();
+  const bufLen = Math.floor(ac.sampleRate * 0.09);
+  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / bufLen, 0.4);
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const hp = ac.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 1200;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(0.4, startT);
+  g.gain.exponentialRampToValueAtTime(0.001, startT + 0.09);
+  src.connect(hp); hp.connect(g); g.connect(percGain);
+  src.start(startT); src.stop(startT + 0.1);
+}
+
+function scheduleHihat(startT, open) {
+  const ac = getAudioCtx();
+  const dur = open ? 0.055 : 0.022;
+  const bufLen = Math.floor(ac.sampleRate * dur);
+  const buf = ac.createBuffer(1, bufLen, ac.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufLen; i++) data[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource();
+  src.buffer = buf;
+  const hp = ac.createBiquadFilter();
+  hp.type = 'highpass';
+  hp.frequency.value = 8000;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(open ? 0.1 : 0.06, startT);
+  g.gain.exponentialRampToValueAtTime(0.001, startT + dur);
+  src.connect(hp); hp.connect(g); g.connect(percGain);
+  src.start(startT); src.stop(startT + dur + 0.01);
 }
 
 function scheduleMelodyLoop(startT) {
   const ac = getAudioCtx();
   let t = startT;
-  let beatDur = 0.5; // quarter note duration
+  let beatDur = 0.4; // 150 BPM - lively pace
   let totalDur = 0;
   for (const [freq, dur] of MELODY) {
     scheduleNote(freq, t, dur * beatDur, musicGain);
     t += dur * beatDur;
     totalDur += dur * beatDur;
   }
-  // Kick on every beat
+  // Kick on beats 1 & 3, snare on beats 2 & 4, hi-hat every half-beat
   let kt = startT;
+  let beat = 0;
   while (kt < startT + totalDur) {
-    scheduleKick(kt);
+    if (beat % 2 === 0) {
+      scheduleKick(kt);
+    } else {
+      scheduleSnare(kt);
+    }
+    scheduleHihat(kt, beat % 2 === 0);
+    if (kt + beatDur * 0.5 < startT + totalDur) {
+      scheduleHihat(kt + beatDur * 0.5, false);
+    }
     kt += beatDur;
+    beat++;
   }
   return totalDur;
 }
@@ -1003,7 +1058,7 @@ function checkPlayerEatDot() {
   if (r < 0 || r >= ROWS || c < 0 || c >= COLS) return;
   const v = maze[r][c];
   if (v === 0) {
-    maze[r][c] = 2;
+    maze[r][c] = 5;
     player.score += 10;
     dotsEaten++;
     playDotEatSound();
@@ -1011,7 +1066,7 @@ function checkPlayerEatDot() {
       triggerWin();
     }
   } else if (v === 3) {
-    maze[r][c] = 2;
+    maze[r][c] = 5;
     player.score += 50;
     dotsEaten++;
     playPowerPelletSound();

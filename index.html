@@ -6,33 +6,78 @@
 <title>שאגת הארי</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { background: #000; display: flex; flex-direction: column; justify-content: center; align-items: center; min-height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
+  body { background: #000; display: flex; justify-content: center; align-items: center; width: 100vw; height: 100vh; overflow: hidden; font-family: 'Arial', sans-serif; }
+  #gameWrapper { position: relative; line-height: 0; }
   canvas { display: block; touch-action: none; }
-  #touchControls { display: none; flex-direction: column; align-items: center; gap: 6px; margin-top: 8px; user-select: none; -webkit-user-select: none; }
-  .dpad { display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 4px; }
-  .dpad-btn { width: 60px; height: 60px; background: rgba(255,255,255,0.12); border: 2px solid rgba(255,255,255,0.35); border-radius: 10px; color: #fff; font-size: 24px; display: flex; align-items: center; justify-content: center; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-  .dpad-btn:active { background: rgba(255,255,255,0.35); }
-  .dpad-blank { background: transparent !important; border: none !important; }
-  #actionBtn { padding: 10px 30px; background: rgba(255,220,0,0.15); border: 2px solid rgba(255,220,0,0.55); border-radius: 22px; color: #ffd700; font-size: 16px; font-family: 'Arial', sans-serif; cursor: pointer; -webkit-tap-highlight-color: transparent; touch-action: manipulation; }
-  #actionBtn:active { background: rgba(255,220,0,0.4); }
+  #touchControls {
+    display: none;
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    flex-direction: row;
+    align-items: flex-end;
+    justify-content: space-between;
+    padding: 10px 16px 14px;
+    background: linear-gradient(transparent, rgba(0,0,0,0.55));
+    user-select: none; -webkit-user-select: none;
+    pointer-events: none;
+  }
+  #touchControls > * { pointer-events: all; }
+  .dpad { display: grid; grid-template-columns: repeat(3, 68px); grid-template-rows: repeat(3, 68px); gap: 5px; direction: ltr; }
+  .dpad-btn {
+    width: 68px; height: 68px;
+    background: radial-gradient(circle at 40% 35%, rgba(255,210,0,0.55), rgba(180,120,0,0.35));
+    border: 2px solid rgba(255,200,0,0.7);
+    border-radius: 50%;
+    color: #fff;
+    font-size: 28px;
+    text-shadow: 0 1px 4px rgba(0,0,0,0.8);
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,200,0.3);
+    transition: transform 0.08s, background 0.08s;
+  }
+  .dpad-btn:active {
+    background: radial-gradient(circle at 40% 35%, rgba(255,240,80,0.75), rgba(200,140,0,0.55));
+    transform: scale(0.92);
+  }
+  .dpad-blank { background: transparent !important; border: none !important; box-shadow: none !important; }
+  #actionBtn {
+    padding: 12px 24px;
+    background: rgba(255,220,0,0.18);
+    border: 2px solid rgba(255,220,0,0.65);
+    border-radius: 24px;
+    color: #ffd700;
+    font-size: 15px;
+    font-family: 'Arial', sans-serif;
+    cursor: pointer;
+    -webkit-tap-highlight-color: transparent;
+    touch-action: manipulation;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.6);
+    align-self: center;
+  }
+  #actionBtn:active { background: rgba(255,220,0,0.45); transform: scale(0.95); }
   @media (max-width: 900px) { #touchControls { display: flex; } }
 </style>
 </head>
 <body>
+<div id="gameWrapper">
 <canvas id="gameCanvas" width="800" height="600"></canvas>
 <div id="touchControls">
   <div class="dpad">
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnUp">▲</button>
+    <button class="dpad-btn" id="btnUp">⬆</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnLeft">◀</button>
+    <button class="dpad-btn" id="btnLeft">⬅</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnRight">▶</button>
+    <button class="dpad-btn" id="btnRight">➡</button>
     <div class="dpad-btn dpad-blank"></div>
-    <button class="dpad-btn" id="btnDown">▼</button>
+    <button class="dpad-btn" id="btnDown">⬇</button>
     <div class="dpad-btn dpad-blank"></div>
   </div>
-  <button id="actionBtn">התחל / השהה</button>
+  <button id="actionBtn">▶ / ⏸</button>
+</div>
 </div>
 <script>
 // =============================================================================
@@ -1745,12 +1790,13 @@ function isTouchDevice() {
 }
 
 function resizeCanvas() {
-  const controlsH = isTouchDevice() ? 175 : 0;
-  const scaleX = window.innerWidth / CANVAS_W;
-  const scaleY = (window.innerHeight - controlsH) / CANVAS_H;
-  const scale = Math.min(scaleX, scaleY, 1);
-  canvas.style.width = (CANVAS_W * scale) + 'px';
-  canvas.style.height = (CANVAS_H * scale) + 'px';
+  const scale = Math.min(window.innerWidth / CANVAS_W, window.innerHeight / CANVAS_H);
+  const w = (CANVAS_W * scale) + 'px';
+  const h = (CANVAS_H * scale) + 'px';
+  canvas.style.width = w;
+  canvas.style.height = h;
+  const wrapper = document.getElementById('gameWrapper');
+  if (wrapper) { wrapper.style.width = w; wrapper.style.height = h; }
 }
 
 function setupTouchControls() {

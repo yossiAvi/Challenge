@@ -1348,7 +1348,7 @@ function initGame() {
   powerTimer = 0;
   globalTime = 0;
   scheduleNextHungry();
-  startMusic();
+  try { startMusic(); } catch(e) { console.warn('audio init failed:', e); }
 }
 
 function fullReset() {
@@ -1873,30 +1873,29 @@ function setupTouchControls() {
   actionBtn.addEventListener('touchstart', e => { e.preventDefault(); handleActionBtn(); }, { passive: false });
   actionBtn.addEventListener('click', handleActionBtn);
 
-  // Swipe/tap support on canvas
+  // Swipe/tap on canvas
+  // passive:true so iOS can generate click events from taps (needed for fullReset)
   let swipeStartX = 0, swipeStartY = 0;
   canvas.addEventListener('touchstart', e => {
     swipeStartX = e.touches[0].clientX;
     swipeStartY = e.touches[0].clientY;
-    e.preventDefault();
-  }, { passive: false });
+  }, { passive: true });
   canvas.addEventListener('touchend', e => {
     const ddx = e.changedTouches[0].clientX - swipeStartX;
     const ddy = e.changedTouches[0].clientY - swipeStartY;
-    // Tap (no swipe) → start or restart game
-    if (Math.abs(ddx) < 10 && Math.abs(ddy) < 10) {
-      if (gameState === STATE_START || gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
-        fullReset();
-      }
-      return;
-    }
+    if (Math.abs(ddx) < 15 && Math.abs(ddy) < 15) return; // tap → handled by click
     if (Math.abs(ddx) > Math.abs(ddy)) {
       player.nextDx = ddx > 0 ? 1 : -1; player.nextDy = 0;
     } else {
       player.nextDx = 0; player.nextDy = ddy > 0 ? 1 : -1;
     }
-    e.preventDefault();
-  }, { passive: false });
+  }, { passive: true });
+  // click fires after a tap on iOS — use it to start/restart the game
+  canvas.addEventListener('click', () => {
+    if (gameState === STATE_START || gameState === STATE_GAMEOVER || gameState === STATE_WIN) {
+      fullReset();
+    }
+  });
 }
 
 window.addEventListener('resize', resizeCanvas);
